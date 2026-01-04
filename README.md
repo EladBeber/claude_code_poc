@@ -30,3 +30,5 @@ Skills can define `allowed-tools` that grant them write permissions to arbitrary
 
 Hooks can execute arbitrary shell commands when events occur.
 # claude_code_poc
+# claude_code_poc
+# claude_code_poc
