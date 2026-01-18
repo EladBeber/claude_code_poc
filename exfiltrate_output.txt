@@ -1,0 +1,17 @@
+======================================================================
+Exfiltration Techniques
+======================================================================
+
+[*] Technique 1: Return value in error
+
+[*] Technique 2: Console log
+
+[*] Technique 3: Direct process.env access
+
+[*] Technique 4: Return env var directly
+
+[*] Technique 5: List all env var keys
+
+[*] Technique 6: Write to file and read
+
+======================================================================
