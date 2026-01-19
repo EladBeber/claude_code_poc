@@ -1,0 +1,30 @@
+version: '3.8'
+
+services:
+  vulnerable-server:
+    build: .
+    container_name: vulnerable-react-server
+    ports:
+      # Bind to localhost only for security
+      - "127.0.0.1:3000:3000"
+    environment:
+      - NODE_ENV=development
+    volumes:
+      # Mount source for development
+      - ./src:/app/src
+      - ./public:/app/public
+    restart: unless-stopped
+    networks:
+      - isolated-network
+    labels:
+      - "com.security.warning=vulnerable-application"
+      - "com.security.testing=true"
+
+networks:
+  isolated-network:
+    driver: bridge
+    internal: false  # Set to true for complete isolation
+
+# WARNING: This docker-compose.yml is for running an intentionally
+# vulnerable application for security testing purposes only.
+# DO NOT use in production environments!
