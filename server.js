@@ -15,6 +15,7 @@
 
 const express = require('express');
 const bodyParser = require('body-parser');
+const multer = require('multer');
 const { exec, spawn } = require('child_process');
 const fs = require('fs');
 const path = require('path');
@@ -29,6 +30,9 @@ app.use(cors());
 app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({ extended: true }));
 app.use(express.static('public'));
+
+// Configure multer for multipart/form-data
+const upload = multer();
 
 // VULNERABILITY 1: Command Injection via exec
 // Allows arbitrary command execution through user input
@@ -116,6 +120,65 @@ app.post('/api/deserialize', (req, res) => {
         res.json({ success: true, data: deserializedData });
     } catch (error) {
         res.json({ success: false, error: error.message });
+    }
+});
+
+// VULNERABILITY 5b: RSC-Style Multipart Deserialization (React Server Components)
+// This mimics how React Server Components handle multipart form data
+app.post('/api/rsc-action', upload.none(), (req, res) => {
+    console.log('[VULN] RSC-style deserialization attempt via multipart/form-data');
+    console.log('[VULN] Form fields received:', Object.keys(req.body));
+
+    try {
+        // VULNERABLE: Reconstruct object from multipart fields without validation
+        // This simulates how RSC deserializes form data into objects
+        const reconstructedObject = {};
+
+        // Parse each form field and reconstruct the object
+        for (const [key, value] of Object.entries(req.body)) {
+            try {
+                // VULNERABLE: Using eval to parse JSON-like strings from form fields
+                // This is where prototype pollution can occur
+                reconstructedObject[key] = eval('(' + value + ')');
+                console.log(`[VULN] Parsed field "${key}":`, value.substring(0, 100));
+            } catch (e) {
+                reconstructedObject[key] = value;
+            }
+        }
+
+        // VULNERABLE: Process the reconstructed object
+        // In a real RSC implementation, this would trigger promise resolution
+        // which can execute the polluted prototype chain
+        if (reconstructedObject['0'] && typeof reconstructedObject['0'] === 'object') {
+            // Simulate RSC promise/action handling
+            const actionData = reconstructedObject['0'];
+
+            // Check if this looks like an RSC action payload
+            if (actionData._response && actionData._response._prefix) {
+                console.log('[VULN] Detected RSC action with _prefix:', actionData._response._prefix);
+            }
+
+            // VULNERABLE: Trigger any 'then' handlers (promise chain)
+            // This is where the prototype pollution attack executes
+            if (actionData.then) {
+                console.log('[VULN] Detected prototype pollution via "then" property');
+            }
+        }
+
+        res.json({
+            success: true,
+            message: 'RSC action processed',
+            reconstructed: reconstructedObject,
+            warning: 'This endpoint is vulnerable to prototype pollution via multipart form data'
+        });
+
+    } catch (error) {
+        console.log('[VULN] RSC deserialization error:', error.message);
+        res.json({
+            success: false,
+            error: error.message,
+            stack: error.stack
+        });
     }
 });
 
